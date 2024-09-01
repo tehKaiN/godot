@@ -3146,7 +3146,7 @@ Error ResourceImporterScene::import(const String &p_source_file, const String &p
 		scene->set_local_id(INT32_MAX); // As root is generated, it gets assigned a default id,
 		// which is unlikely to occur in post import scripts
 		while (!id_assign_queue.is_empty()) {
-			Node *item = id_assign_queue[0];
+			Node *item = id_assign_queue.front()->get();
 			id_assign_queue.pop_front();
 			// Custom import scripts might be used to assign ids (which must be > 0)
 			// in which case this must be skipped.
