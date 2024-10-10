@@ -57,6 +57,7 @@ def rc_defs_builder(target, source, env):
         file.write(
             """\
 #define ICON_PATH platform/windows/icons/godot_{status}.ico
+#define ICON_WRAP_PATH platform/windows/icons/godot_console_{status}.ico
 """.format(**env.version_info)
         )
 
