@@ -1,3 +1,7 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# Generates the executable icons with build status badges, as well as the console variants for Windows.
 # For windows, download latest GTK runtime:
 # - https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases
 # pip install cairosvg pillow icnsutil
@@ -8,15 +12,16 @@
 
 
 import io
-from typing import Dict, List, Union
-import icnsutil
+from dataclasses import dataclass, replace
 from os import mkdir
 from shutil import copytree
-from dataclasses import dataclass, replace
+from typing import Dict, List
 
 from cairosvg.parser import Tree
 from cairosvg.surface import SVGSurface
+from icnsutil import ArgbImage, IcnsFile, IcnsType
 from PIL import Image, ImageFile
+
 
 @dataclass(frozen=True)
 class badge_dimensions:
@@ -25,10 +30,12 @@ class badge_dimensions:
     height: int
     pos_reverse: bool = False
 
+
 @dataclass(frozen=True)
 class badge_descriptor:
     svg_bytes: bytes = bytes()
     dimensions: badge_dimensions = badge_dimensions(0, 0, 0)
+
 
 @dataclass(frozen=True)
 class android_icon_descriptor:
@@ -37,24 +44,31 @@ class android_icon_descriptor:
     foreground_contents_size: int
     badges: List[badge_descriptor]
 
+
 status_badge_dimensions_by_size = {
-    512: badge_dimensions(x=10, y=10, height=128), # macos
-    256: badge_dimensions(x=10, y=10, height=64), # win32, macos
-    192: badge_dimensions(x=0, y=0, height=64), # android
-    144: badge_dimensions(x=0, y=0, height=48), # android
-    128: badge_dimensions(x=10, y=10, height=32), # win32, macos
-    96: badge_dimensions(x=0, y=0, height=32), # android
-    72: badge_dimensions(x=0, y=0, height=24), # android
-    64: badge_dimensions(x=0, y=0, height=16), # win32
-    48: badge_dimensions(x=0, y=0, height=16), # win32, android
-    32: badge_dimensions(x=0, y=0, height=11), # win32, macos
-    16: badge_dimensions(x=0, y=0, height=6), # win32, macos
+    512: badge_dimensions(x=10, y=10, height=128),  # macos
+    256: badge_dimensions(x=10, y=10, height=64),  # win32, macos
+    192: badge_dimensions(x=0, y=0, height=64),  # android
+    144: badge_dimensions(x=0, y=0, height=48),  # android
+    128: badge_dimensions(x=10, y=10, height=32),  # win32, macos
+    96: badge_dimensions(x=0, y=0, height=32),  # android
+    72: badge_dimensions(x=0, y=0, height=24),  # android
+    64: badge_dimensions(x=0, y=0, height=16),  # win32
+    48: badge_dimensions(x=0, y=0, height=16),  # win32, android
+    32: badge_dimensions(x=0, y=0, height=11),  # win32, macos
+    16: badge_dimensions(x=0, y=0, height=6),  # win32, macos
 }
+
+platform_path = "../../platform"
+icon_path = "../../icon.svg"
+icon_components_path = "../dist/icon_generation"
+
 
 def load_file(path: str) -> bytes:
     with open(path) as svg_file:
         svg_bytes = svg_file.read()
         return svg_bytes.encode()
+
 
 def load_svg(svg_bytes: bytes, width=None, height=None) -> SVGSurface:
     svg = SVGSurface(
@@ -66,6 +80,7 @@ def load_svg(svg_bytes: bytes, width=None, height=None) -> SVGSurface:
     )
     return svg
 
+
 def try_mkdir(dir: str) -> bool:
     try:
         mkdir(dir)
@@ -73,8 +88,10 @@ def try_mkdir(dir: str) -> bool:
     except:
         return False
 
+
 def rasterize_svg(icon_svg_bytes: bytes, icon_size: int) -> ImageFile:
     return Image.open(io.BytesIO(load_svg(icon_svg_bytes, height=icon_size).cairo.write_to_png(target=None)))
+
 
 def assemble_icon_image(base_icon_image: ImageFile, badges: List[badge_descriptor]) -> ImageFile:
     icon_result = base_icon_image.copy()
@@ -95,15 +112,17 @@ def assemble_icon_image(base_icon_image: ImageFile, badges: List[badge_descripto
 
 
 def compose_windows_icon(build_status: str, out_path: str, is_console: bool = False):
-    base_icon_svg_bytes = load_file("../../../icon.svg")
+    base_icon_svg_bytes = load_file(icon_path)
 
     # Not including biggest ones (512, 1024) or it blows up in size
     sizes: List[int] = [256, 128, 64, 48, 32, 16]
     icon_badges: Dict[int, List[badge_descriptor]] = {s: [] for s in sizes}
 
     if build_status in ["dev", "beta", "rc"]:
-        build_status_badge_svg_bytes = load_file(f"icon_badges/status_{build_status}.svg")
-        build_status_badge_mini_svg_bytes = load_file(f"icon_badges/status_{build_status}_mini.svg")
+        build_status_badge_svg_bytes = load_file(f"{icon_components_path}/icon_badges/status_{build_status}.svg")
+        build_status_badge_mini_svg_bytes = load_file(
+            f"{icon_components_path}/icon_badges/status_{build_status}_mini.svg"
+        )
 
         icon_badges[256].append(badge_descriptor(build_status_badge_svg_bytes, status_badge_dimensions_by_size[256]))
         icon_badges[128].append(badge_descriptor(build_status_badge_svg_bytes, status_badge_dimensions_by_size[128]))
@@ -113,14 +132,26 @@ def compose_windows_icon(build_status: str, out_path: str, is_console: bool = Fa
         icon_badges[16].append(badge_descriptor(build_status_badge_mini_svg_bytes, status_badge_dimensions_by_size[16]))
 
     if is_console:
-        console_badge_svg_bytes = load_file("icon_badges/console.svg")
+        console_badge_svg_bytes = load_file(f"{icon_components_path}/icon_badges/console.svg")
 
-        icon_badges[256].append(badge_descriptor(console_badge_svg_bytes, badge_dimensions(x=10, y=10, height=80, pos_reverse=True)))
-        icon_badges[128].append(badge_descriptor(console_badge_svg_bytes, badge_dimensions(x=10, y=10, height=40, pos_reverse=True)))
-        icon_badges[64].append(badge_descriptor(console_badge_svg_bytes, badge_dimensions(x=0, y=0, height=24, pos_reverse=True)))
-        icon_badges[48].append(badge_descriptor(console_badge_svg_bytes, badge_dimensions(x=0, y=0, height=17, pos_reverse=True)))
-        icon_badges[32].append(badge_descriptor(console_badge_svg_bytes, badge_dimensions(x=0, y=0, height=13, pos_reverse=True)))
-        icon_badges[16].append(badge_descriptor(console_badge_svg_bytes, badge_dimensions(x=0, y=0, height=8, pos_reverse=True)))
+        icon_badges[256].append(
+            badge_descriptor(console_badge_svg_bytes, badge_dimensions(x=10, y=10, height=80, pos_reverse=True))
+        )
+        icon_badges[128].append(
+            badge_descriptor(console_badge_svg_bytes, badge_dimensions(x=10, y=10, height=40, pos_reverse=True))
+        )
+        icon_badges[64].append(
+            badge_descriptor(console_badge_svg_bytes, badge_dimensions(x=0, y=0, height=24, pos_reverse=True))
+        )
+        icon_badges[48].append(
+            badge_descriptor(console_badge_svg_bytes, badge_dimensions(x=0, y=0, height=17, pos_reverse=True))
+        )
+        icon_badges[32].append(
+            badge_descriptor(console_badge_svg_bytes, badge_dimensions(x=0, y=0, height=13, pos_reverse=True))
+        )
+        icon_badges[16].append(
+            badge_descriptor(console_badge_svg_bytes, badge_dimensions(x=0, y=0, height=8, pos_reverse=True))
+        )
 
     images: List[ImageFile] = []
     for size, badges in icon_badges.items():
@@ -133,34 +164,74 @@ def compose_windows_icon(build_status: str, out_path: str, is_console: bool = Fa
         sizes=[(im.width, im.height) for im in images],
     )
 
+
 def compose_android_icons(build_status: str, out_base_path: str):
     try_mkdir(out_base_path)
-    base_icon_svg_bytes = load_file("../../../icon.svg")
+    base_icon_svg_bytes = load_file(icon_path)
 
     icon_descriptors: Dict[str, android_icon_descriptor] = {
-        'mdpi': android_icon_descriptor(size=(int)(48), foreground_size=(int)(108), foreground_contents_size=(int)(66), badges=[]),
-        'hdpi': android_icon_descriptor(size=(int)(1.5*48), foreground_size=(int)(1.5*108), foreground_contents_size=(int)(1.5*66), badges=[]),
-        'xhdpi': android_icon_descriptor(size=(int)(2*48), foreground_size=(int)(2*108), foreground_contents_size=(int)(2*66), badges=[]),
-        'xxhdpi': android_icon_descriptor(size=(int)(3*48), foreground_size=(int)(3*108), foreground_contents_size=(int)(3*66), badges=[]),
-        'xxxhdpi': android_icon_descriptor(size=(int)(4*48), foreground_size=(int)(4*108), foreground_contents_size=(int)(4*66), badges=[])}
+        "mdpi": android_icon_descriptor(
+            size=(int)(48), foreground_size=(int)(108), foreground_contents_size=(int)(66), badges=[]
+        ),
+        "hdpi": android_icon_descriptor(
+            size=(int)(1.5 * 48), foreground_size=(int)(1.5 * 108), foreground_contents_size=(int)(1.5 * 66), badges=[]
+        ),
+        "xhdpi": android_icon_descriptor(
+            size=(int)(2 * 48), foreground_size=(int)(2 * 108), foreground_contents_size=(int)(2 * 66), badges=[]
+        ),
+        "xxhdpi": android_icon_descriptor(
+            size=(int)(3 * 48), foreground_size=(int)(3 * 108), foreground_contents_size=(int)(3 * 66), badges=[]
+        ),
+        "xxxhdpi": android_icon_descriptor(
+            size=(int)(4 * 48), foreground_size=(int)(4 * 108), foreground_contents_size=(int)(4 * 66), badges=[]
+        ),
+    }
 
     if build_status in ["dev", "beta", "rc"]:
-        build_status_badge_svg_bytes = load_file(f"icon_badges/status_{build_status}.svg")
-        icon_descriptors['mdpi'].badges.append(badge_descriptor(build_status_badge_svg_bytes, status_badge_dimensions_by_size[icon_descriptors['mdpi'].size]))
-        icon_descriptors['hdpi'].badges.append(badge_descriptor(build_status_badge_svg_bytes, status_badge_dimensions_by_size[icon_descriptors['hdpi'].size]))
-        icon_descriptors['xhdpi'].badges.append(badge_descriptor(build_status_badge_svg_bytes, status_badge_dimensions_by_size[icon_descriptors['xhdpi'].size]))
-        icon_descriptors['xxhdpi'].badges.append(badge_descriptor(build_status_badge_svg_bytes, status_badge_dimensions_by_size[icon_descriptors['xxhdpi'].size]))
-        icon_descriptors['xxxhdpi'].badges.append(badge_descriptor(build_status_badge_svg_bytes, status_badge_dimensions_by_size[icon_descriptors['xxxhdpi'].size]))
+        build_status_badge_svg_bytes = load_file(f"{icon_components_path}/icon_badges/status_{build_status}.svg")
+        icon_descriptors["mdpi"].badges.append(
+            badge_descriptor(
+                build_status_badge_svg_bytes, status_badge_dimensions_by_size[icon_descriptors["mdpi"].size]
+            )
+        )
+        icon_descriptors["hdpi"].badges.append(
+            badge_descriptor(
+                build_status_badge_svg_bytes, status_badge_dimensions_by_size[icon_descriptors["hdpi"].size]
+            )
+        )
+        icon_descriptors["xhdpi"].badges.append(
+            badge_descriptor(
+                build_status_badge_svg_bytes, status_badge_dimensions_by_size[icon_descriptors["xhdpi"].size]
+            )
+        )
+        icon_descriptors["xxhdpi"].badges.append(
+            badge_descriptor(
+                build_status_badge_svg_bytes, status_badge_dimensions_by_size[icon_descriptors["xxhdpi"].size]
+            )
+        )
+        icon_descriptors["xxxhdpi"].badges.append(
+            badge_descriptor(
+                build_status_badge_svg_bytes, status_badge_dimensions_by_size[icon_descriptors["xxxhdpi"].size]
+            )
+        )
 
     for icon_size_name, descriptor in icon_descriptors.items():
         try_mkdir(f"{out_base_path}/mipmap-{icon_size_name}")
         image = assemble_icon_image(rasterize_svg(base_icon_svg_bytes, descriptor.size), descriptor.badges)
         image.save(f"{out_base_path}/mipmap-{icon_size_name}/icon.png")
 
-        foreground_badges : List[badge_descriptor]= [badge_descriptor() for _ in range(len(descriptor.badges))]
+        foreground_badges: List[badge_descriptor] = [badge_descriptor() for _ in range(len(descriptor.badges))]
         for i, fg_badge in enumerate(descriptor.badges):
-            foreground_badges[i] = replace(fg_badge, dimensions=replace(fg_badge.dimensions, height= round(fg_badge.dimensions.height * descriptor.foreground_contents_size / descriptor.size)))
-        image_foreground_contents = assemble_icon_image(rasterize_svg(base_icon_svg_bytes, descriptor.foreground_contents_size), foreground_badges)
+            foreground_badges[i] = replace(
+                fg_badge,
+                dimensions=replace(
+                    fg_badge.dimensions,
+                    height=round(fg_badge.dimensions.height * descriptor.foreground_contents_size / descriptor.size),
+                ),
+            )
+        image_foreground_contents = assemble_icon_image(
+            rasterize_svg(base_icon_svg_bytes, descriptor.foreground_contents_size), foreground_badges
+        )
         image_foreground = Image.new("RGBA", [descriptor.foreground_size, descriptor.foreground_size], (0, 0, 0, 0))
         foreground_margin_size = (descriptor.foreground_size - descriptor.foreground_contents_size) // 2
         image_foreground.paste(image_foreground_contents, (foreground_margin_size, foreground_margin_size))
@@ -193,15 +264,17 @@ def compose_macos_icons(build_status: str, out_base_path: str):
     # so use the already provided godot icon and add some badges to it
 
     if build_status in ["dev", "beta", "rc"]:
-        build_status_badge_svg_bytes = load_file(f"icon_badges/status_{build_status}.svg")
-        build_status_badge_mini_svg_bytes = load_file(f"icon_badges/status_{build_status}_mini.svg")
+        build_status_badge_svg_bytes = load_file(f"{icon_components_path}/icon_badges/status_{build_status}.svg")
+        build_status_badge_mini_svg_bytes = load_file(
+            f"{icon_components_path}/icon_badges/status_{build_status}_mini.svg"
+        )
 
     try_mkdir(out_base_path)
-    icns_file = icnsutil.IcnsFile("macos/Godot.icns")
+    icns_file = IcnsFile(f"{icon_components_path}/macos/Godot.icns")
     for icon_key, icon_bytes in icns_file.media.items():
-        icon_type = icnsutil.IcnsType.get(icon_key)
+        icon_type = IcnsType.get(icon_key)
         if icon_type.is_type("argb"):
-            icon_argb = icnsutil.ArgbImage(data=icon_bytes)
+            icon_argb = ArgbImage(data=icon_bytes)
             icon_png = Image.new("RGBA", icon_argb.size)
             for y in range(icon_png.height):
                 for x in range(icon_png.width):
@@ -221,11 +294,15 @@ def compose_macos_icons(build_status: str, out_base_path: str):
             else:
                 base_size = icon_type.size[0]
                 dimensions = status_badge_dimensions_by_size[base_size]
-            badges.append(badge_descriptor(build_status_badge_svg_bytes if base_size > 16 else build_status_badge_mini_svg_bytes, dimensions))
+            badges.append(
+                badge_descriptor(
+                    build_status_badge_svg_bytes if base_size > 16 else build_status_badge_mini_svg_bytes, dimensions
+                )
+            )
 
         assembled_icon = assemble_icon_image(icon_png, badges)
         if icon_type.is_type("argb"):
-            assembled_argb = icnsutil.ArgbImage(image=assembled_icon)
+            assembled_argb = ArgbImage(image=assembled_icon)
             assembled_icon_bytes = assembled_argb.argb_data()
         elif icon_type.is_type("png"):
             bytes_io = io.BytesIO()
@@ -234,12 +311,13 @@ def compose_macos_icons(build_status: str, out_base_path: str):
         icns_file.media[icon_key] = assembled_icon_bytes
     icns_file.write(f"{out_base_path}/Godot_{build_status}.icns")
 
-for build_status in ["beta", "rc", "dev", "stable"]:
-    compose_windows_icon(build_status, f"../../../platform/windows/icons/godot_{build_status}.ico")
-    compose_windows_icon(build_status, f"../../../platform/windows/icons/godot_console_{build_status}.ico", is_console=True)
 
-try_mkdir("../../../platform/android/icons")
-try_mkdir("../../../platform/macos/icons")
+try_mkdir(f"{platform_path}/android/icons")
+try_mkdir(f"{platform_path}/macos/icons")
 for build_status in ["beta", "rc", "dev", "stable"]:
-    compose_android_icons(build_status, f"../../../platform/android/icons/{build_status}")
-    compose_macos_icons(build_status, f"../../../platform/macos/icons")
+    compose_windows_icon(build_status, f"{platform_path}/windows/icons/godot_{build_status}.ico")
+    compose_windows_icon(
+        build_status, f"{platform_path}/windows/icons/godot_console_{build_status}.ico", is_console=True
+    )
+    compose_android_icons(build_status, f"{platform_path}/android/icons/{build_status}")
+    compose_macos_icons(build_status, f"{platform_path}/macos/icons")
