@@ -92,6 +92,9 @@ platform/android/java/*/libs/
 platform/android/java/lib/res/mipmap/
 platform/android/java/lib/res/mipmap-*dpi/
 
+# Macos
+misc/dist/macos_tools.app/Contents/Resources/Godot.icns
+
 # iOS
 *.dSYM
 
